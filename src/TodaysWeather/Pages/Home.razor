@@ -26,7 +26,7 @@
                         </ul>
                     }
                 </div>
-                <button class="location-button" @onclick="UseLocation" aria-label="Use my location"><span>⌖</span> <span class="location-label">My location</span></button>
+                <button class="location-button" @onclick="UseLocation" aria-label="Use my location"><span>◎</span> <span class="location-label">My location</span></button>
                 <div class="unit-toggle" aria-label="Temperature units">
                     <button class="@(!fahrenheit ? "active" : "")" aria-pressed="@(!fahrenheit)" @onclick="() => SetUnits(false)">°C</button>
                     <button class="@(fahrenheit ? "active" : "")" aria-pressed="@fahrenheit" @onclick="() => SetUnits(true)">°F</button>
@@ -64,7 +64,7 @@
                 var f = result.Forecast; var current = f.Current; var daily = f.Daily;
                 <div class="dashboard">
                     <section class="glass hero" aria-label="Current weather">
-                        <div class="hero-top"><div><p class="card-kicker"><span>✦</span> CURRENT WEATHER</p><h2>@location.Name</h2><p class="region">⌖ &nbsp;@location.Region</p></div><div class="hero-date">@LocalNow.ToString("dddd, MMMM d")<strong>@LocalNow.ToString("HH:mm") <span>LOCAL TIME</span></strong></div></div>
+                        <div class="hero-top"><div><p class="card-kicker"><span>✦</span> CURRENT WEATHER</p><h2>@location.Name</h2><p class="region">◎ &nbsp;@location.Region</p></div><div class="hero-date">@LocalNow.ToString("dddd, MMMM d")<strong>@LocalNow.ToString("HH:mm") <span>LOCAL TIME</span></strong></div></div>
                         <div class="hero-main">
                             <div><div class="temperature">@Temp(current.Temperature_2m)<span>°</span></div><div class="condition">@WeatherMath.Condition(current.WeatherCode)</div><p class="hero-summary">@Summary(current.WeatherCode)</p></div>
                             <WeatherIcon Code="current.WeatherCode" Day="@(current.IsDay == 1)" Class="hero-icon" />
@@ -110,7 +110,7 @@
                         <div class="detail-title"><div><p class="card-kicker">SOAK IT IN, SAFELY</p><h3>UV index</h3></div><span class="detail-symbol">◌</span></div>
                         <div class="metric">@(Uv.ToString("0.#")) <small>@UvLabel</small></div><p>@UvGuidance</p>
                         <div class="uv-scale"><span style="left: @(Math.Clamp(Uv / 11 * 100, 1, 99).ToString("0", System.Globalization.CultureInfo.InvariantCulture))%"></span></div><div class="scale-labels"><span>LOW</span><span>MODERATE</span><span>HIGH</span><span>EXTREME</span></div>
-                        <p class="detail-foot">Today’s maximum UV index</p>
+                        <p class="detail-foot">Today’s maximum · @daily.UvIndexMax[0].ToString("0.#")</p>
                     </section>
                     <section class="glass detail precipitation-card" aria-label="Precipitation and humidity">
                         <div class="detail-title"><div><p class="card-kicker">A LITTLE MOISTURE</p><h3>Rain & humidity</h3></div><span class="detail-symbol">♧</span></div>
@@ -149,7 +149,7 @@
     private int CurrentHour => result is null ? 0 : Math.Clamp(Array.FindIndex(result.Forecast.Hourly.Time, t => t.Hour == LocalNow.Hour), 0, result.Forecast.Hourly.Time.Length - 1);
     private int FocusHour => focusedHour < 0 ? CurrentHour : Math.Clamp(focusedHour, 0, result!.Forecast.Hourly.Time.Length - 1);
     private string SpeedUnit => fahrenheit ? "mph" : "km/h";
-    private double Uv => result!.Forecast.Daily.UvIndexMax[0];
+    private double Uv => result!.Forecast.Hourly.UvIndex[CurrentHour];
     private string UvLabel => Uv < 3 ? "Low" : Uv < 6 ? "Moderate" : Uv < 8 ? "High" : Uv < 11 ? "Very high" : "Extreme";
     private string UvGuidance => Uv < 3 ? "Enjoy the outdoors." : Uv < 6 ? "A little sunscreen goes a long way." : "Seek shade and wear sunscreen.";
     private string WindDescription => result!.Forecast.Current.WindSpeed_10m < 6 ? "A gentle whisper" : result.Forecast.Current.WindSpeed_10m < 25 ? "A pleasant breeze" : "A breezy day";
@@ -160,7 +160,7 @@
     private string SunMessage {
         get {
             var sunrise = result!.Forecast.Daily.Sunrise[0]; var sunset = result.Forecast.Daily.Sunset[0];
-            if (LocalNow >= sunset) return "Sunset has passed · sunrise tomorrow";
+            if (LocalNow >= sunset) { var until = sunrise.AddDays(1) - LocalNow; return $"About {(int)until.TotalHours}h {until.Minutes:D2}m until sunrise"; }
             var target = LocalNow < sunrise ? sunrise : sunset; var remaining = target - LocalNow;
             return $"{(int)remaining.TotalHours}h {remaining.Minutes:D2}m until {(LocalNow < sunrise ? "sunrise" : "sunset")}";
         }
@@ -176,7 +176,7 @@
     protected override async Task OnInitializedAsync()
     {
         try { var saved = await JS.InvokeAsync<City?>("weatherStorage.getCity"); if (saved is not null && !string.IsNullOrWhiteSpace(saved.Name) && saved.Latitude is >= -90 and <= 90 && saved.Longitude is >= -180 and <= 180) location = saved; fahrenheit = await JS.InvokeAsync<bool>("weatherStorage.getFahrenheit"); } catch (JSException) { }
-        clock = new System.Threading.Timer(_ => _ = InvokeAsync(StateHasChanged), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+        clock = new System.Threading.Timer(_ => _ = InvokeAsync(async () => { if (!loading && result is not null && result.Forecast.Hourly.Time[0].Date != LocalNow.Date) await Refresh(); else StateHasChanged(); }), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
         await Refresh();
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)

@@ -164,6 +164,7 @@ public sealed class WeatherService(HttpClient http)
         f.Hourly.Time is { Length: > 0 } && f.Hourly.Temperature_2m?.Length == f.Hourly.Time.Length &&
         f.Hourly.WeatherCode?.Length == f.Hourly.Time.Length && f.Hourly.PrecipitationProbability?.Length == f.Hourly.Time.Length &&
         f.Hourly.IsDay?.Length == f.Hourly.Time.Length && f.Hourly.ApparentTemperature?.Length == f.Hourly.Time.Length &&
+        f.Hourly.UvIndex?.Length == f.Hourly.Time.Length &&
         f.Daily.Sunrise is { Length: > 0 } && f.Daily.Sunset is { Length: > 0 } && f.Daily.Temperature_2mMax is { Length: > 0 } &&
         f.Daily.Temperature_2mMin is { Length: > 0 } && f.Daily.UvIndexMax is { Length: > 0 } &&
         f.Daily.PrecipitationSum is { Length: > 0 } && f.Daily.PrecipitationProbabilityMax is { Length: > 0 };
@@ -176,7 +177,7 @@ public sealed class WeatherService(HttpClient http)
         {
             UtcOffsetSeconds = (int)TimeZoneInfo.Local.GetUtcOffset(now).TotalSeconds,
             Current = new() { Temperature_2m = 22, ApparentTemperature = 21, IsDay = now.Hour is >= 6 and < 19 ? 1 : 0, WeatherCode = 2, RelativeHumidity_2m = 64, CloudCover = 34, PressureMsl = 1016, WindSpeed_10m = 14, WindDirection_10m = 225, WindGusts_10m = 23 },
-            Hourly = new() { Time = Enumerable.Range(0, 24).Select(h => day.AddHours(h)).ToArray(), Temperature_2m = Enumerable.Range(0, 24).Select(h => 18 + 5 * Math.Sin((h - 8) * Math.PI / 12)).ToArray(), ApparentTemperature = Enumerable.Repeat(21d, 24).ToArray(), PrecipitationProbability = Enumerable.Range(0, 24).Select(h => (double)(h % 4 * 5 + 5)).ToArray(), WeatherCode = Enumerable.Repeat(2, 24).ToArray(), IsDay = Enumerable.Range(0, 24).Select(h => h is >= 6 and < 19 ? 1 : 0).ToArray() },
+            Hourly = new() { Time = Enumerable.Range(0, 24).Select(h => day.AddHours(h)).ToArray(), Temperature_2m = Enumerable.Range(0, 24).Select(h => 18 + 5 * Math.Sin((h - 8) * Math.PI / 12)).ToArray(), ApparentTemperature = Enumerable.Repeat(21d, 24).ToArray(), PrecipitationProbability = Enumerable.Range(0, 24).Select(h => (double)(h % 4 * 5 + 5)).ToArray(), WeatherCode = Enumerable.Repeat(2, 24).ToArray(), IsDay = Enumerable.Range(0, 24).Select(h => h is >= 6 and < 19 ? 1 : 0).ToArray(), UvIndex = Enumerable.Range(0, 24).Select(h => Math.Max(0, 6 * Math.Sin((h - 6) * Math.PI / 12))).ToArray() },
             Daily = new() { Sunrise = [day.AddHours(6).AddMinutes(18)], Sunset = [day.AddHours(19).AddMinutes(42)], Temperature_2mMax = [25], Temperature_2mMin = [16], UvIndexMax = [6], PrecipitationSum = [0.4], PrecipitationProbabilityMax = [20] }
         };
     }

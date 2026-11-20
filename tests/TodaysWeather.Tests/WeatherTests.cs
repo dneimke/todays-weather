@@ -47,7 +47,7 @@ public class WeatherTests
     public async Task ParsesForecastAndOptionalAirQuality()
     {
         const string forecast = """
-        {"utc_offset_seconds":3600,"current":{"temperature_2m":18.5,"relative_humidity_2m":70,"apparent_temperature":17,"is_day":1,"weather_code":2,"wind_speed_10m":12,"wind_gusts_10m":18},"hourly":{"time":["2026-06-01T12:00"],"temperature_2m":[18.5],"apparent_temperature":[17],"precipitation_probability":[20],"weather_code":[2],"is_day":[1]},"daily":{"temperature_2m_max":[21],"temperature_2m_min":[12],"sunrise":["2026-06-01T05:00"],"sunset":["2026-06-01T21:00"],"uv_index_max":[5],"precipitation_sum":[0.5],"precipitation_probability_max":[20]}}
+        {"utc_offset_seconds":3600,"current":{"temperature_2m":18.5,"relative_humidity_2m":70,"apparent_temperature":17,"is_day":1,"weather_code":2,"wind_speed_10m":12,"wind_gusts_10m":18},"hourly":{"time":["2026-06-01T12:00"],"temperature_2m":[18.5],"apparent_temperature":[17],"precipitation_probability":[20],"weather_code":[2],"is_day":[1],"uv_index":[4]},"daily":{"temperature_2m_max":[21],"temperature_2m_min":[12],"sunrise":["2026-06-01T05:00"],"sunset":["2026-06-01T21:00"],"uv_index_max":[5],"precipitation_sum":[0.5],"precipitation_probability_max":[20]}}
         """;
         var service = new WeatherService(new HttpClient(new StubHandler(request => request.RequestUri!.Host.StartsWith("air-quality") ? """{"current":{"us_aqi":42,"pm2_5":8.5}}""" : forecast)));
         var result = await service.GetAsync(WeatherService.Cities[0]);
