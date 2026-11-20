@@ -1,0 +1,224 @@
+@page "/"
+@implements IDisposable
+@inject WeatherService Weather
+@inject IJSRuntime JS
+
+<PageTitle>Today's Weather</PageTitle>
+
+<div class="app-shell theme-@Theme">
+    <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+    <div class="weather-effects" aria-hidden="true"></div>
+    <div class="content">
+        <header class="topbar">
+            <a class="brand" href="/" aria-label="Today's Weather home"><span class="brand-icon">✳</span><span>weather<span class="brand-dot">.</span><small>YOUR DAILY FORECAST</small></span></a>
+            <div class="top-actions">
+                <div class="search-wrap">
+                    <span class="search-icon" aria-hidden="true">⌕</span>
+                    <input type="search" placeholder="Search for a city..." aria-label="Search for a city" role="combobox" aria-autocomplete="list" aria-expanded="@(suggestions.Length > 0)" aria-controls="city-suggestions" aria-activedescendant="@(selectedSuggestion >= 0 ? $"city-option-{selectedSuggestion}" : null)" value="@search" @oninput="SearchChanged" @onkeydown="SearchKeyDown" />
+                    @if (suggestions.Length > 0)
+                    {
+                        <ul id="city-suggestions" class="suggestions" role="listbox" aria-label="City suggestions">
+                            @for (var i = 0; i < suggestions.Length; i++)
+                            {
+                                var index = i; var city = suggestions[i];
+                                <li id="@($"city-option-{index}")" role="option" aria-selected="@(index == selectedSuggestion)"><button @onclick="() => SelectCity(city)"><strong>@city.Name</strong><span>@city.Region</span></button></li>
+                            }
+                        </ul>
+                    }
+                </div>
+                <button class="location-button" @onclick="UseLocation" aria-label="Use my location"><span>⌖</span> <span class="location-label">My location</span></button>
+                <div class="unit-toggle" aria-label="Temperature units">
+                    <button class="@(!fahrenheit ? "active" : "")" aria-pressed="@(!fahrenheit)" @onclick="() => SetUnits(false)">°C</button>
+                    <button class="@(fahrenheit ? "active" : "")" aria-pressed="@fahrenheit" @onclick="() => SetUnits(true)">°F</button>
+                </div>
+                <button class="refresh-button" @onclick="Refresh" aria-label="Refresh weather">↻</button>
+            </div>
+        </header>
+
+        <main>
+            <div class="intro-row">
+                <div><p class="eyebrow"><span class="live-dot"></span> YOUR PERSONAL WEATHER REPORT</p><h1>A little more <em>under the weather.</em></h1><p class="intro-copy">A beautiful day starts with knowing what’s ahead.</p></div>
+                <div class="updated">◷ &nbsp; Updated @(updated?.ToString("HH:mm") ?? "—")</div>
+            </div>
+            <div class="city-row" aria-label="Popular cities">
+                <span>EXPLORE</span>
+                @foreach (var city in WeatherService.Cities)
+                {
+                    <button class="city-pill @(location.Name == city.Name ? "selected" : "")" @onclick="() => SelectCity(city)">@city.Name</button>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(message))
+            {
+                <div class="notice" role="status">@message <button @onclick="() => message = null" aria-label="Dismiss message">×</button></div>
+            }
+            @if (result?.IsSample == true && !dismissSample)
+            {
+                <div class="notice sample-notice" role="status">Showing sample weather data <span>—</span> <button class="retry" @onclick="Refresh">Retry live</button><button @onclick="() => dismissSample = true" aria-label="Dismiss sample data notice">×</button></div>
+            }
+            @if (loading || result is null)
+            {
+                <div class="skeleton-grid" aria-label="Loading weather"><div></div><div></div><div></div></div>
+            }
+            else
+            {
+                var f = result.Forecast; var current = f.Current; var daily = f.Daily;
+                <div class="dashboard">
+                    <section class="glass hero" aria-label="Current weather">
+                        <div class="hero-top"><div><p class="card-kicker"><span>✦</span> CURRENT WEATHER</p><h2>@location.Name</h2><p class="region">⌖ &nbsp;@location.Region</p></div><div class="hero-date">@LocalNow.ToString("dddd, MMMM d")<strong>@LocalNow.ToString("HH:mm") <span>LOCAL TIME</span></strong></div></div>
+                        <div class="hero-main">
+                            <div><div class="temperature">@Temp(current.Temperature_2m)<span>°</span></div><div class="condition">@WeatherMath.Condition(current.WeatherCode)</div><p class="hero-summary">@Summary(current.WeatherCode)</p></div>
+                            <WeatherIcon Code="current.WeatherCode" Day="@(current.IsDay == 1)" Class="hero-icon" />
+                        </div>
+                        <div class="hero-bottom"><span>Feels like <strong>@Temp(current.ApparentTemperature)°</strong></span><span class="high-low">↑ @Temp(daily.Temperature_2mMax[0])° <i></i> ↓ @Temp(daily.Temperature_2mMin[0])°</span><span class="hero-bottom-label">TODAY’S HIGH / LOW</span></div>
+                    </section>
+
+                    <section class="glass hourly" aria-label="Hourly forecast">
+                        <div class="section-head"><div><p class="card-kicker">THE DAY AHEAD</p><h3>Hourly forecast</h3></div><span class="head-note">TODAY <span>↗</span></span></div>
+                        <div class="hourly-scroll">
+                            <div class="hourly-inner">
+                                <svg class="chart" viewBox="0 0 960 110" preserveAspectRatio="none" aria-hidden="true">
+                                    <defs><linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#ffe2a3" stop-opacity=".35"/><stop offset="100%" stop-color="#ffe2a3" stop-opacity="0"/></linearGradient></defs>
+                                    <path d="@ChartArea" fill="url(#chartFill)" /><path d="@ChartLine" fill="none" stroke="#ffe1a0" stroke-width="2.5" vector-effect="non-scaling-stroke" />
+                                    <circle cx="@ChartX(FocusHour)" cy="@ChartY(FocusHour)" r="5" fill="#fff0c8" stroke="#bc9961" stroke-width="2"/>
+                                </svg>
+                                <div class="hour-cards">
+                                    @for (int i = 0; i < f.Hourly.Time.Length; i++)
+                                    {
+                                        var index = i;
+                                        <button class="hour @(FocusHour == i ? "focused" : "")" @onclick="() => focusedHour = index" @onmouseover="() => focusedHour = index" @onfocus="() => focusedHour = index" aria-label="@f.Hourly.Time[i].ToString("h tt"), @Temp(f.Hourly.Temperature_2m[i]) degrees, @f.Hourly.PrecipitationProbability[i] percent chance of rain">
+                                            <span>@(i == CurrentHour ? "Now" : f.Hourly.Time[i].ToString("h tt"))</span><WeatherIcon Code="f.Hourly.WeatherCode[i]" Day="@(f.Hourly.IsDay[i] == 1)" Class="hour-icon" /><strong>@Temp(f.Hourly.Temperature_2m[i])°</strong><small>♧ @f.Hourly.PrecipitationProbability[i].ToString("0")%</small>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div class="hour-detail">⌁ &nbsp; @f.Hourly.Time[FocusHour].ToString("h tt") · @WeatherMath.Condition(f.Hourly.WeatherCode[FocusHour]) · Feels like @Temp(f.Hourly.ApparentTemperature[FocusHour])° <span>SCROLL TO EXPLORE →</span></div>
+                    </section>
+
+                    <section class="glass detail sun-card" aria-label="Sun and daylight">
+                        <div class="detail-title"><div><p class="card-kicker">FOLLOW THE LIGHT</p><h3>Sun & daylight</h3></div><span class="detail-symbol">☼</span></div>
+                        <div class="sun-arc"><svg viewBox="0 0 240 120" role="img" aria-label="Daylight progress"><path d="M20 105 A100 100 0 0 1 220 105" fill="none" stroke="rgba(255,255,255,.18)" stroke-width="2" stroke-dasharray="4 5"/><path d="@SunPath" fill="none" stroke="#ffdb92" stroke-width="3" stroke-linecap="round"/><circle cx="@SunX" cy="@SunY" r="7" fill="#ffe2a3"/><path d="M10 105h220" stroke="rgba(255,255,255,.16)"/></svg><div class="daylight"><strong>@WeatherMath.DaylightDuration(daily.Sunrise[0], daily.Sunset[0])</strong><span>DAYLIGHT</span></div></div>
+                        <div class="sun-times"><div><span>↑ &nbsp; SUNRISE</span><strong>@daily.Sunrise[0].ToString("h:mm tt")</strong></div><div><span>↓ &nbsp; SUNSET</span><strong>@daily.Sunset[0].ToString("h:mm tt")</strong></div></div>
+                        <p class="detail-foot">@SunMessage</p>
+                    </section>
+                    <section class="glass detail wind-card" aria-label="Wind and gusts">
+                        <div class="detail-title"><div><p class="card-kicker">IN THE AIR</p><h3>Wind & gusts</h3></div><span class="detail-symbol">↗</span></div>
+                        <div class="wind-content"><div><div class="metric">@Speed(current.WindSpeed_10m) <small>@SpeedUnit</small></div><p>@WindDescription</p><div class="submetric">GUSTS <strong>@Speed(current.WindGusts_10m) @SpeedUnit</strong></div></div><div class="compass" aria-label="Wind direction @WeatherMath.WindDirection(current.WindDirection_10m)"><span class="north">N</span><span class="east">E</span><span class="south">S</span><span class="west">W</span><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="34" fill="none" stroke="rgba(255,255,255,.22)" stroke-dasharray="2 4"/><g transform="rotate(@current.WindDirection_10m.ToString(System.Globalization.CultureInfo.InvariantCulture) 50 50)"><path d="M50 17 60 59 50 53 40 59Z" fill="#ffe0a2"/><path d="M50 83 40 59 50 53 60 59Z" fill="rgba(255,255,255,.35)"/></g></svg></div></div>
+                        <p class="detail-foot">Coming from the @WeatherMath.WindDirection(current.WindDirection_10m)</p>
+                    </section>
+                    <section class="glass detail uv-card" aria-label="UV index">
+                        <div class="detail-title"><div><p class="card-kicker">SOAK IT IN, SAFELY</p><h3>UV index</h3></div><span class="detail-symbol">◌</span></div>
+                        <div class="metric">@(Uv.ToString("0.#")) <small>@UvLabel</small></div><p>@UvGuidance</p>
+                        <div class="uv-scale"><span style="left: @(Math.Clamp(Uv / 11 * 100, 1, 99).ToString("0", System.Globalization.CultureInfo.InvariantCulture))%"></span></div><div class="scale-labels"><span>LOW</span><span>MODERATE</span><span>HIGH</span><span>EXTREME</span></div>
+                        <p class="detail-foot">Today’s maximum UV index</p>
+                    </section>
+                    <section class="glass detail precipitation-card" aria-label="Precipitation and humidity">
+                        <div class="detail-title"><div><p class="card-kicker">A LITTLE MOISTURE</p><h3>Rain & humidity</h3></div><span class="detail-symbol">♧</span></div>
+                        <div class="metric">@daily.PrecipitationProbabilityMax[0].ToString("0")<small>% chance</small></div><p>of rain today</p>
+                        <div class="mini-stats"><div><span>PRECIPITATION</span><strong>@daily.PrecipitationSum[0].ToString("0.#") mm</strong></div><div><span>HUMIDITY</span><strong>@current.RelativeHumidity_2m.ToString("0")%</strong></div></div>
+                        <p class="detail-foot">@(current.RelativeHumidity_2m >= 70 ? "A little humid out there" : "Comfortable air today")</p>
+                    </section>
+                    <section class="glass detail air-card" aria-label="Atmospheric conditions">
+                        <div class="detail-title"><div><p class="card-kicker">THE BIGGER PICTURE</p><h3>Atmosphere</h3></div><span class="detail-symbol">◎</span></div>
+                        <div class="atmosphere-row"><span>◉ &nbsp; Air pressure</span><strong>@current.PressureMsl.ToString("0") <small>hPa</small></strong></div>
+                        <div class="atmosphere-row"><span>☁ &nbsp; Cloud cover</span><strong>@current.CloudCover.ToString("0")<small>%</small></strong></div>
+                        <div class="atmosphere-row"><span>✧ &nbsp; Air quality</span><strong>@(result.Air?.UsAqi is double aqi ? $"AQI {aqi:0}" : "Unavailable")</strong></div>
+                        <p class="detail-foot">@(result.Air?.Pm2_5 is double pm ? $"PM2.5 · {pm:0.#} μg/m³" : "Air quality data when available")</p>
+                    </section>
+                </div>
+            }
+        </main>
+        <footer><span><span class="brand-icon">✳</span> &nbsp; Made for whatever the day brings.</span><span>WEATHER DATA BY <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">OPEN-METEO</a> &nbsp; · &nbsp; YOUR DAY, AT A GLANCE</span></footer>
+    </div>
+</div>
+
+@code {
+    private City location = WeatherService.Cities[0];
+    private WeatherResult? result;
+    private bool fahrenheit, loading = true, dismissSample, scrollToCurrent;
+    private string search = "";
+    private string? message;
+    private City[] suggestions = [];
+    private int selectedSuggestion = -1, focusedHour = -1;
+    private DateTime? updated;
+    private CancellationTokenSource? searchCancellation;
+    private System.Threading.Timer? clock;
+    private long loadVersion;
+    private DateTime LocalNow => DateTime.UtcNow.AddSeconds(result?.Forecast.UtcOffsetSeconds ?? 0);
+    private string Theme => result is null ? "clear" : WeatherMath.Theme(result.Forecast.Current.WeatherCode, result.Forecast.Current.IsDay == 1);
+    private int CurrentHour => result is null ? 0 : Math.Clamp(Array.FindIndex(result.Forecast.Hourly.Time, t => t.Hour == LocalNow.Hour), 0, result.Forecast.Hourly.Time.Length - 1);
+    private int FocusHour => focusedHour < 0 ? CurrentHour : Math.Clamp(focusedHour, 0, result!.Forecast.Hourly.Time.Length - 1);
+    private string SpeedUnit => fahrenheit ? "mph" : "km/h";
+    private double Uv => result!.Forecast.Daily.UvIndexMax[0];
+    private string UvLabel => Uv < 3 ? "Low" : Uv < 6 ? "Moderate" : Uv < 8 ? "High" : Uv < 11 ? "Very high" : "Extreme";
+    private string UvGuidance => Uv < 3 ? "Enjoy the outdoors." : Uv < 6 ? "A little sunscreen goes a long way." : "Seek shade and wear sunscreen.";
+    private string WindDescription => result!.Forecast.Current.WindSpeed_10m < 6 ? "A gentle whisper" : result.Forecast.Current.WindSpeed_10m < 25 ? "A pleasant breeze" : "A breezy day";
+    private double SunProgress => WeatherMath.DaylightProgress(LocalNow, result!.Forecast.Daily.Sunrise[0], result.Forecast.Daily.Sunset[0]);
+    private string SunX => (120 - 100 * Math.Cos(Math.PI * SunProgress)).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    private string SunY => (105 - 100 * Math.Sin(Math.PI * SunProgress)).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    private string SunPath => $"M20 105 A100 100 0 0 1 {SunX} {SunY}";
+    private string SunMessage {
+        get {
+            var sunrise = result!.Forecast.Daily.Sunrise[0]; var sunset = result.Forecast.Daily.Sunset[0];
+            if (LocalNow >= sunset) return "Sunset has passed · sunrise tomorrow";
+            var target = LocalNow < sunrise ? sunrise : sunset; var remaining = target - LocalNow;
+            return $"{(int)remaining.TotalHours}h {remaining.Minutes:D2}m until {(LocalNow < sunrise ? "sunrise" : "sunset")}";
+        }
+    }
+    private string Temp(double value) => WeatherMath.Temperature(value, fahrenheit).ToString("0");
+    private string Speed(double value) => WeatherMath.Speed(value, fahrenheit).ToString("0");
+    private static string Summary(int code) => WeatherMath.Theme(code, true) switch { "rain" => "Keep an umbrella close and take the day as it comes.", "storm" => "A dramatic sky today. Stay safe out there.", "snow" => "A little winter magic is in the air.", "fog" => "A softer view today. Take your time out there.", "overcast" => "A calm, cloudy kind of day.", _ => "Whatever your plans, make a little room for the sky." };
+    private string ChartX(int i) => (20 + i * 920.0 / Math.Max(1, result!.Forecast.Hourly.Time.Length - 1)).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    private string ChartY(int i) { var values = result!.Forecast.Hourly.Temperature_2m; var range = Math.Max(1, values.Max() - values.Min()); return (85 - (values[i] - values.Min()) / range * 60).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture); }
+    private string ChartLine { get { var n = result!.Forecast.Hourly.Time.Length; var path = $"M {ChartX(0)} {ChartY(0)}"; for (var i = 1; i < n; i++) { var mid = (double.Parse(ChartX(i - 1), System.Globalization.CultureInfo.InvariantCulture) + double.Parse(ChartX(i), System.Globalization.CultureInfo.InvariantCulture)) / 2; var x = mid.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture); path += $" C {x} {ChartY(i - 1)}, {x} {ChartY(i)}, {ChartX(i)} {ChartY(i)}"; } return path; } }
+    private string ChartArea => $"{ChartLine} L {ChartX(result!.Forecast.Hourly.Time.Length - 1)} 110 L {ChartX(0)} 110 Z";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { var saved = await JS.InvokeAsync<City?>("weatherStorage.getCity"); if (saved is not null && !string.IsNullOrWhiteSpace(saved.Name) && saved.Latitude is >= -90 and <= 90 && saved.Longitude is >= -180 and <= 180) location = saved; fahrenheit = await JS.InvokeAsync<bool>("weatherStorage.getFahrenheit"); } catch (JSException) { }
+        clock = new System.Threading.Timer(_ => _ = InvokeAsync(StateHasChanged), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+        await Refresh();
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (scrollToCurrent && !loading) { scrollToCurrent = false; try { await JS.InvokeVoidAsync("weatherStorage.showCurrentHour"); } catch (JSException) { } }
+    }
+    private async Task Refresh()
+    {
+        var version = ++loadVersion; loading = true; dismissSample = false; focusedHour = -1; StateHasChanged();
+        var weather = await Weather.GetAsync(location);
+        if (version != loadVersion) return;
+        result = weather; updated = LocalNow; loading = false; scrollToCurrent = true;
+    }
+    private async Task SelectCity(City city)
+    {
+        location = city; search = ""; suggestions = []; message = null; searchCancellation?.Cancel();
+        try { await JS.InvokeVoidAsync("weatherStorage.setCity", city); } catch (JSException) { }
+        await Refresh();
+    }
+    private async Task SetUnits(bool value) { fahrenheit = value; try { await JS.InvokeVoidAsync("weatherStorage.setFahrenheit", value); } catch (JSException) { } }
+    private async Task SearchChanged(ChangeEventArgs args)
+    {
+        search = args.Value?.ToString() ?? ""; searchCancellation?.Cancel(); searchCancellation?.Dispose(); searchCancellation = new();
+        var token = searchCancellation.Token; suggestions = []; selectedSuggestion = -1;
+        if (search.Trim().Length < 2) return;
+        try { await Task.Delay(300, token); var found = await Weather.SearchAsync(search, token); if (!token.IsCancellationRequested) suggestions = found; }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException or NotSupportedException) { message = "City search is unavailable right now."; }
+    }
+    private async Task SearchKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") { suggestions = []; return; }
+        if (suggestions.Length == 0) return;
+        if (args.Key == "ArrowDown") selectedSuggestion = (selectedSuggestion + 1) % suggestions.Length;
+        else if (args.Key == "ArrowUp") selectedSuggestion = (selectedSuggestion - 1 + suggestions.Length) % suggestions.Length;
+        else if (args.Key == "Enter" && selectedSuggestion >= 0) await SelectCity(suggestions[selectedSuggestion]);
+    }
+    private async Task UseLocation()
+    {
+        try { var position = await JS.InvokeAsync<Coordinates>("weatherStorage.getLocation"); await SelectCity(new City("Your location", "Current location", null, position.Latitude, position.Longitude)); }
+        catch (JSException) { message = "Location unavailable. Please allow location access or search for a city."; }
+    }
+    public void Dispose() { clock?.Dispose(); searchCancellation?.Cancel(); searchCancellation?.Dispose(); }
+    private sealed class Coordinates { public double Latitude { get; set; } public double Longitude { get; set; } }
+}

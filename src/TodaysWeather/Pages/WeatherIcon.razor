@@ -1,0 +1,44 @@
+<svg class="@Class" viewBox="0 0 120 120" role="img" aria-label="@WeatherMath.Condition(Code)">
+    @if (WeatherMath.Theme(Code, Day) == "night")
+    {
+        <path d="M75 19a38 38 0 1 0 28 57A39 39 0 0 1 75 19Z" fill="#fbe8b0" />
+        <path d="M89 25v10m-5-5h10M28 34v8m-4-4h8" stroke="#fff4cc" stroke-width="2" stroke-linecap="round" />
+    }
+    else if (WeatherMath.Theme(Code, Day) == "clear")
+    {
+        <circle cx="60" cy="60" r="24" fill="#ffd582" />
+        <g stroke="#ffe8b1" stroke-width="4" stroke-linecap="round">
+            <path d="M60 14v10M60 96v10M14 60h10M96 60h10M27 27l7 7M86 86l7 7M93 27l-7 7M34 86l-7 7" />
+        </g>
+    }
+    else
+    {
+        @if (WeatherMath.Theme(Code, Day) == "partly")
+        {
+            <circle cx="78" cy="39" r="21" fill="#ffd582" />
+        }
+        <path d="M30 81c-12 0-19-8-19-18 0-10 8-18 19-19 4-15 17-24 32-21 13 2 21 11 23 23 14-1 24 7 24 18S100 81 87 81Z" fill="#eaf4fb" />
+        @if (WeatherMath.Theme(Code, Day) == "rain")
+        {
+            <path d="M38 90l-5 12m26-12-5 12m26-12-5 12" stroke="#94d5ff" stroke-width="5" stroke-linecap="round" />
+        }
+        else if (WeatherMath.Theme(Code, Day) == "storm")
+        {
+            <path d="M62 79 48 98h13l-4 17 20-25H64l7-11Z" fill="#ffd582" />
+        }
+        else if (WeatherMath.Theme(Code, Day) == "snow")
+        {
+            <g fill="#fff"><circle cx="36" cy="97" r="4"/><circle cx="60" cy="99" r="4"/><circle cx="84" cy="97" r="4"/></g>
+        }
+        else if (WeatherMath.Theme(Code, Day) == "fog")
+        {
+            <path d="M24 91h72M33 101h54" stroke="#d3e4eb" stroke-width="4" stroke-linecap="round" />
+        }
+    }
+</svg>
+
+@code {
+    [Parameter] public int Code { get; set; }
+    [Parameter] public bool Day { get; set; }
+    [Parameter] public string Class { get; set; } = "";
+}
